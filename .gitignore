@@ -1,5 +1,23 @@
+# Virtual environments
 venv/
+
+# Environment variables
 .env
+
+# Python cache
 __pycache__/
 *.pyc
+
+# SQLite databases
 *.db
+
+# macOS
+.DS_Store
+
+# Distribution / packaging
+*.egg-info/
+dist/
+
+# IDE settings
+.idea/
+.vscode/
