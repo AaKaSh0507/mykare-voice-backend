@@ -39,7 +39,7 @@ from livekit.agents import (
     llm as livekit_llm,
 )
 from livekit.agents.pipeline import VoicePipelineAgent
-from livekit.plugins import deepgram, cartesia, openai, silero
+from livekit.plugins import deepgram, cartesia, google, silero
 
 # ─── Application imports ─────────────────────────────────────────
 
@@ -535,8 +535,12 @@ async def entrypoint(ctx: JobContext):
     voice_id = os.getenv("CARTESIA_VOICE_ID", "sonic-english")
     tts = cartesia.TTS(voice=voice_id)
 
-    # 6. LLM — OpenAI gpt-4o-mini
-    llm = openai.LLM(model="gpt-4o-mini")
+    # 6. LLM — Gemini
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    llm = google.LLM(
+        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        api_key=gemini_api_key,
+    )
 
     # 7. Build tool function context
     fnc_ctx = build_tool_functions(state, room=ctx.room)

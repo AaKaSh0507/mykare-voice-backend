@@ -8,6 +8,7 @@ Run with:
     uvicorn main:app --reload --port 8000
 """
 
+import json
 import logging
 import os
 import platform
@@ -15,6 +16,8 @@ import sys
 import time
 import traceback
 import uuid
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -104,6 +107,13 @@ class SessionStartRequest(BaseModel):
     phone: Optional[str] = None
 
 
+class TavusSessionRequest(BaseModel):
+    persona_id: Optional[str] = None
+    replica_id: Optional[str] = None
+    conversation_name: Optional[str] = "Mykare Voice Session"
+    custom_greeting: Optional[str] = None
+
+
 # ─── Helpers ──────────────────────────────────────────────────────
 
 
@@ -130,7 +140,7 @@ _REQUIRED_ENV_VARS = [
     "LIVEKIT_API_SECRET",
     "DEEPGRAM_API_KEY",
     "CARTESIA_API_KEY",
-    "OPENAI_API_KEY",
+    "GEMINI_API_KEY",
 ]
 
 
@@ -166,7 +176,7 @@ async def health():
         "livekit": "configured" if os.getenv("LIVEKIT_URL") else "not configured",
         "deepgram": "configured" if os.getenv("DEEPGRAM_API_KEY") else "not configured",
         "cartesia": "configured" if os.getenv("CARTESIA_API_KEY") else "not configured",
-        "openai": "configured" if os.getenv("OPENAI_API_KEY") else "not configured",
+        "gemini": "configured" if os.getenv("GEMINI_API_KEY") else "not configured",
     }
 
     overall = "ok" if db.get("status") == "ok" else "degraded"
@@ -304,6 +314,72 @@ async def start_session(body: SessionStartRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to create session: {exc}",
+        )
+
+
+# ─── ENDPOINT 7: POST /avatar/session ────────────────────────────
+
+
+@app.post("/avatar/session", tags=["Avatar"])
+async def create_tavus_session(body: TavusSessionRequest):
+    """Create a Tavus conversation and return a joinable conversation URL."""
+    tavus_api_key = os.getenv("TAVUS_API_KEY")
+    default_replica = os.getenv("TAVUS_REPLICA_ID")
+    default_persona = os.getenv("TAVUS_PERSONA_ID")
+
+    if not tavus_api_key:
+        raise HTTPException(status_code=503, detail="Tavus is not configured on this server.")
+
+    payload = {}
+    replica_id = body.replica_id or default_replica
+    persona_id = body.persona_id or default_persona
+
+    if not replica_id and not persona_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide persona_id or set TAVUS_REPLICA_ID/TAVUS_PERSONA_ID in environment.",
+        )
+
+    if replica_id:
+        payload["replica_id"] = replica_id
+    if persona_id:
+        payload["persona_id"] = persona_id
+    if body.conversation_name:
+        payload["conversation_name"] = body.conversation_name
+    if body.custom_greeting:
+        payload["custom_greeting"] = body.custom_greeting
+
+    request = urllib.request.Request(
+        url="https://tavusapi.com/v2/conversations",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": tavus_api_key,
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            raw = response.read().decode("utf-8")
+            data = json.loads(raw) if raw else {}
+            return {
+                "success": True,
+                "data": data,
+                "message": "Tavus avatar session created.",
+            }
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        logger.error("Tavus create conversation failed: %s", detail)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Tavus API error: {detail}",
+        )
+    except Exception as exc:
+        logger.error("Tavus session creation failed: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create Tavus session: {exc}",
         )
 
 
