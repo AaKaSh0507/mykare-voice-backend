@@ -40,6 +40,30 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 ---
 
+## Development Commands
+
+Run validation tests:
+
+```bash
+python tests/test_db.py
+python tests/test_tools.py
+```
+
+Start only the voice agent:
+
+```bash
+python agent.py start
+```
+
+Run API server and agent together (development):
+
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python agent.py start
+```
+
+---
+
 ## Environment Variables
 
 | Variable              | Service   | Description                                      |

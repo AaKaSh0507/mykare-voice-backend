@@ -237,9 +237,11 @@ def book_appointment(
 ) -> dict:
     """Book an appointment for the caller."""
     try:
+        cleaned_phone = _clean_phone(phone) if isinstance(phone, str) else phone
+
         # Validate required fields
         missing = []
-        if not phone:
+        if not cleaned_phone:
             missing.append("phone number")
         if not name:
             missing.append("name")
@@ -253,6 +255,14 @@ def book_appointment(
                 "error": "missing_fields",
                 "message": f"I still need your {', '.join(missing)} "
                            "to complete the booking.",
+            }
+
+        if not _validate_phone(cleaned_phone):
+            return {
+                "success": False,
+                "error": "invalid_phone",
+                "message": "That phone number doesn't look valid yet. "
+                           "Please share a 10-digit mobile number.",
             }
 
         # Validate formats
@@ -280,7 +290,7 @@ def book_appointment(
                            "Would you like to pick a date from today onwards?",
             }
 
-        appt = db_book_appointment(phone, name, slot_date, slot_time, notes)
+        appt = db_book_appointment(cleaned_phone, name, slot_date, slot_time, notes)
 
         date_h = _format_date_human(slot_date)
         time_h = _format_time_human(slot_time)
@@ -312,14 +322,24 @@ def book_appointment(
 def retrieve_appointments(phone: str) -> dict:
     """Fetch all active appointments for a caller."""
     try:
-        if not phone:
+        cleaned_phone = _clean_phone(phone) if isinstance(phone, str) else phone
+
+        if not cleaned_phone:
             return {
                 "success": False,
                 "error": "missing_fields",
                 "message": "I need your phone number to look up your appointments.",
             }
 
-        appts = get_appointments(phone, include_cancelled=False)
+        if not _validate_phone(cleaned_phone):
+            return {
+                "success": False,
+                "error": "invalid_phone",
+                "message": "That phone number doesn't seem valid. "
+                           "Please share a 10-digit mobile number.",
+            }
+
+        appts = get_appointments(cleaned_phone, include_cancelled=False)
 
         if not appts:
             return {
@@ -353,7 +373,9 @@ def retrieve_appointments(phone: str) -> dict:
 def cancel_appointment(appointment_id: int, phone: str) -> dict:
     """Cancel a specific appointment by ID."""
     try:
-        if not appointment_id or not phone:
+        cleaned_phone = _clean_phone(phone) if isinstance(phone, str) else phone
+
+        if not appointment_id or not cleaned_phone:
             return {
                 "success": False,
                 "error": "missing_fields",
@@ -361,7 +383,15 @@ def cancel_appointment(appointment_id: int, phone: str) -> dict:
                            "number to cancel it.",
             }
 
-        cancelled = db_cancel_appointment(appointment_id, phone)
+        if not _validate_phone(cleaned_phone):
+            return {
+                "success": False,
+                "error": "invalid_phone",
+                "message": "That phone number doesn't seem valid. "
+                           "Please share a 10-digit mobile number.",
+            }
+
+        cancelled = db_cancel_appointment(appointment_id, cleaned_phone)
         date_h = _format_date_human(cancelled["slot_date"])
         time_h = _format_time_human(cancelled["slot_time"])
 
@@ -405,11 +435,13 @@ def modify_appointment(
 ) -> dict:
     """Reschedule an existing appointment to a new date and time."""
     try:
+        cleaned_phone = _clean_phone(phone) if isinstance(phone, str) else phone
+
         # Validate required fields
         missing = []
         if not appointment_id:
             missing.append("appointment ID")
-        if not phone:
+        if not cleaned_phone:
             missing.append("phone number")
         if not new_date:
             missing.append("new date")
@@ -423,6 +455,14 @@ def modify_appointment(
                            "to reschedule your appointment.",
             }
 
+        if not _validate_phone(cleaned_phone):
+            return {
+                "success": False,
+                "error": "invalid_phone",
+                "message": "That phone number doesn't seem valid. "
+                           "Please share a 10-digit mobile number.",
+            }
+
         # Validate date format
         if not _validate_date_format(new_date):
             return {
@@ -430,6 +470,14 @@ def modify_appointment(
                 "error": "invalid_date",
                 "message": "I couldn't understand the new date. "
                            "Could you say it again?",
+            }
+
+        if not _validate_time_format(new_time):
+            return {
+                "success": False,
+                "error": "invalid_time",
+                "message": "I couldn't understand the new time. "
+                           "Could you say the time again?",
             }
 
         # Check for past date
@@ -443,10 +491,10 @@ def modify_appointment(
 
         # Fetch old appointment details before modifying so we can
         # include the old slot in the confirmation message.
-        old_appts = get_appointments(phone, include_cancelled=False)
+        old_appts = get_appointments(cleaned_phone, include_cancelled=False)
         old_appt = next((a for a in old_appts if a["id"] == appointment_id), None)
 
-        updated = db_modify_appointment(appointment_id, phone, new_date, new_time)
+        updated = db_modify_appointment(appointment_id, cleaned_phone, new_date, new_time)
 
         new_date_h = _format_date_human(new_date)
         new_time_h = _format_time_human(new_time)
@@ -536,6 +584,11 @@ def end_conversation(
             if phone_match:
                 phone = phone_match.group()
 
+        if phone and isinstance(phone, str):
+            phone = _clean_phone(phone)
+            if not _validate_phone(phone):
+                phone = None
+
         # ── Fetch appointments for the user ──
         appointments = []
         if phone:
@@ -581,126 +634,3 @@ def end_conversation(
         }
 
 
-# ─── Validation ───────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    import os
-
-    from prompts import SYSTEM_PROMPT
-
-    print("=" * 60)
-    print("  MyKare Tools — Validation Suite")
-    print("=" * 60)
-
-    # Clean up any previous test database
-    DB_PATH = os.getenv("DB_PATH", "mykare.db")
-    if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
-    init_db()
-
-    passed = 0
-    failed = 0
-
-    def report(step: int, label: str, result: dict, expect_success: bool,
-               expect_error: str = None):
-        global passed, failed
-        ok = result.get("success") == expect_success
-        if expect_error and not expect_success:
-            ok = ok and result.get("error") == expect_error
-        tag = "✅ PASS" if ok else "❌ FAIL"
-        if ok:
-            passed += 1
-        else:
-            failed += 1
-        print(f"\n[{step}/10] {label}")
-        print(f"  {tag}")
-        print(f"  success={result.get('success')}, "
-              f"error={result.get('error', '—')}")
-        print(f"  message: {result.get('message', '—')}")
-        if not ok:
-            print(f"  ⚠ Expected success={expect_success}"
-                  + (f", error={expect_error}" if expect_error else ""))
-
-    # ── Step 1: identify_user — valid phone ──
-    r1 = identify_user("9876543210", name="Priya Menon")
-    report(1, "identify_user — valid phone & name", r1, expect_success=True)
-
-    # ── Step 2: identify_user — invalid phone ──
-    r2 = identify_user("123")
-    report(2, "identify_user — invalid phone '123'", r2,
-           expect_success=False, expect_error="invalid_phone")
-
-    # ── Step 3: fetch_slots — no preferred date ──
-    r3 = fetch_slots()
-    report(3, "fetch_slots — no date filter", r3, expect_success=True)
-
-    # ── Step 4: book_appointment — first available slot ──
-    first_group = r3["data"][0]
-    first_date = first_group["date"]
-    first_time = first_group["times"][0]
-    r4 = book_appointment("9876543210", "Priya Menon", first_date, first_time)
-    report(4, f"book_appointment — {first_date} {first_time}", r4,
-           expect_success=True)
-
-    # ── Step 5: book same slot again — expect slot_unavailable ──
-    r5 = book_appointment("1111111111", "Other User", first_date, first_time)
-    report(5, "book_appointment — same slot again", r5,
-           expect_success=False, expect_error="slot_unavailable")
-
-    # ── Step 6: retrieve_appointments — expect 1 ──
-    r6 = retrieve_appointments("9876543210")
-    report(6, "retrieve_appointments — 9876543210", r6, expect_success=True)
-    count = len(r6.get("data", []))
-    if count != 1:
-        print(f"  ⚠ Expected 1 appointment, got {count}")
-        failed += 1
-        passed -= 1
-
-    # ── Step 7: modify_appointment — move to next slot ──
-    appt_id = r6["data"][0]["id"]
-    # Pick next available slot (different from the booked one)
-    next_slots = fetch_slots()
-    next_group = next_slots["data"][0]
-    new_date = next_group["date"]
-    new_time = next_group["times"][0]
-    # Make sure it's actually a different slot
-    if new_date == first_date and new_time == first_time:
-        new_time = next_group["times"][1] if len(next_group["times"]) > 1 else next_group["times"][0]
-    r7 = modify_appointment(appt_id, "9876543210", new_date, new_time)
-    report(7, f"modify_appointment — to {new_date} {new_time}", r7,
-           expect_success=True)
-
-    # ── Step 8: cancel_appointment ──
-    r8 = cancel_appointment(appt_id, "9876543210")
-    report(8, "cancel_appointment", r8, expect_success=True)
-
-    # ── Step 9: end_conversation ──
-    mock_history = [
-        {"role": "assistant", "content": "Hello! Thank you for calling Mykare Health."},
-        {"role": "user", "content": "Hi, I'd like to book an appointment."},
-        {"role": "assistant", "content": "Of course! Could I get your phone number?"},
-        {"role": "user", "content": "It's 9876543210."},
-        {"role": "assistant", "content": "Thank you! When would you like to come in?"},
-        {"role": "user", "content": "Tomorrow morning at 10 works."},
-    ]
-    r9 = end_conversation("test-session-001", "9876543210", mock_history)
-    report(9, "end_conversation — with mock history", r9, expect_success=True)
-
-    # ── Step 10: Verify SYSTEM_PROMPT ──
-    print(f"\n[10/10] SYSTEM_PROMPT length check")
-    prompt_len = len(SYSTEM_PROMPT)
-    ok = isinstance(SYSTEM_PROMPT, str) and prompt_len > 500
-    if ok:
-        passed += 1
-        print(f"  ✅ PASS — SYSTEM_PROMPT is {prompt_len} characters")
-    else:
-        failed += 1
-        print(f"  ❌ FAIL — SYSTEM_PROMPT length = {prompt_len} (need > 500)")
-
-    # ── Final summary ──
-    print("\n" + "=" * 60)
-    if failed == 0:
-        print(f"  🎉 All {passed}/10 validation steps passed!")
-    else:
-        print(f"  ⚠ {passed} passed, {failed} failed out of 10 steps.")
-    print("=" * 60)
