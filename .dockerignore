@@ -1,0 +1,14 @@
+.env
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+*.db
+tests/
+README.md
+check_env.py
+.env.example

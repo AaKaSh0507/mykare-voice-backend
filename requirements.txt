@@ -1,7 +1,9 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 python-dotenv==1.0.1
-livekit-agents==1.5.6
-livekit-plugins-deepgram==1.5.6
-livekit-plugins-cartesia==1.5.6
-livekit-plugins-google==1.5.6
+livekit-agents==0.12.21
+livekit-plugins-deepgram==0.7.4
+livekit-plugins-cartesia==0.4.12
+livekit-plugins-google==0.11.5
+livekit-plugins-silero==0.7.6
+av==17.0.1

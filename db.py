@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DB_PATH = os.getenv("DB_PATH", "mykare.db")
+DB_PATH = os.getenv("DB_PATH", "/data/mykare.db")
 
 
 # ─── Connection Helper ─────────────────────────────────────────────

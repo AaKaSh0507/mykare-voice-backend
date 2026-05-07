@@ -1,0 +1,21 @@
+app = "mykare-worker"
+primary_region = "sin"
+
+[build]
+
+[env]
+  PYTHONUNBUFFERED = "1"
+
+# No [http_service] section — this is not a web service
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[mounts]
+  source = "mykare_data"
+  destination = "/data"
+
+[processes]
+  worker = "python agent.py start"
