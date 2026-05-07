@@ -54,7 +54,12 @@ app = FastAPI(
 # CORS — allow all origins in development; restrict in production.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # TODO: restrict to frontend origin in production
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://mykare-voice-frontend.vercel.app",
+        "*",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
